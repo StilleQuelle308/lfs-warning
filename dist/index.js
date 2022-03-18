@@ -10511,7 +10511,10 @@ run().catch(error => {
 function getFileSizeLimitBytes() {
     const fsl = core.getInput('filesizelimit');
     const lastTwoChars = fsl.slice(-2).toLowerCase();
-    if (lastTwoChars === 'mb') {
+    if (lastTwoChars === 'kb') {
+        return Number(fsl.slice(0, -2)) * 1024;
+    }
+    else if (lastTwoChars === 'mb') {
         return Number(fsl.slice(0, -2)) * 1024 * 1024;
     }
     else if (lastTwoChars === 'gb') {
