@@ -37,6 +37,10 @@ Optional. Takes a valid **GitHub Token** from the Repo by default.
 
 Optional. A newline delimited list of glob patterns that match checked in files to exclude form LFS Warning.
 
+### `binaryPatterns`
+
+Optional. A newline delimited list of glob patterns that match potential binary files to include, even if the file size is smaller than the specified limit.
+
 ### `labelName`
 
 Optional. The name of the label, defaults to lfs-detected!

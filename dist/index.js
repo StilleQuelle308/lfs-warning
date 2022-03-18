@@ -10446,7 +10446,9 @@ async function run() {
         }
         core.info(`The PR number is: ${pullRequestNumber}`);
         const prFilesWithBlobSize = await getPrFilesWithBlobSize(pullRequestNumber);
+        const prFilesMatchingBinaryPattern = await getPrFilesMatchingBinaryPattern(pullRequestNumber);
         core.debug(`prFilesWithBlobSize: ${JSON.stringify(prFilesWithBlobSize)}`);
+        core.info(`Files matching a binary pattern: ${JSON.stringify(prFilesMatchingBinaryPattern)}`);
         const largeFiles = [];
         const accidentallyCheckedInLsfFiles = [];
         for (const file of prFilesWithBlobSize) {
@@ -10581,6 +10583,23 @@ async function getPrFilesWithBlobSize(pullRequestNumber) {
         };
     }));
     return prFilesWithBlobSize;
+}
+async function getPrFilesMatchingBinaryPattern(pullRequestNumber) {
+    const { data } = await octokit.rest.pulls.listFiles({
+        ...repo,
+        pull_number: pullRequestNumber,
+    });
+    const binaryPatterns = core.getMultilineInput('binaryPatterns');
+    const files = binaryPatterns.length > 0
+        ? data.filter(({ filename }) => {
+            const isBinary = micromatch.isMatch(filename, binaryPatterns);
+            if (isBinary) {
+                core.info(`${filename} matches a binary file extension pattern.`);
+            }
+            return isBinary;
+        })
+        : data;
+    return files;
 }
 function getCommentBody(largeFiles, accidentallyCheckedInLsfFiles, fsl) {
     const largeFilesBody = `The following file(s) exceeds the file size limit: ${fsl} bytes, as set in the .yml configuration files:
