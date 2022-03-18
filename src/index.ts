@@ -37,7 +37,7 @@ async function run() {
     const prFilesMatchingBinaryPattern = await getPrFilesMatchingBinaryPattern(pullRequestNumber);
 
     core.debug(`prFilesWithBlobSize: ${JSON.stringify(prFilesWithBlobSize)}`);
-    core.info(`Files matching a binary pattern: ${JSON.stringify(prFilesMatchingBinaryPattern)}`);
+    core.debug(`Files matching a binary pattern: ${JSON.stringify(prFilesMatchingBinaryPattern)}`);
 
     const largeFiles: string[] = [];
     const accidentallyCheckedInLsfFiles: string[] = [];
@@ -62,8 +62,19 @@ async function run() {
       }
     }
 
-    const lsfFiles = largeFiles.concat(accidentallyCheckedInLsfFiles);
+    for (const file of prFilesMatchingBinaryPattern) {
+      const {filename} = file;
+      const hasLfsFlag = (
+        await execFileP('git', ['check-attr', 'filter', filename])
+      ).stdout.includes('filter: lfs');
+      if (!hasLfsFlag) {
+        core.info(`File matches binary extension pattern but is not LFS tracked: ${filename}`)
+        largeFiles.push(filename)
+      }
+    }
 
+    const lsfFiles = largeFiles.concat(accidentallyCheckedInLsfFiles);
+    
     const issueBaseProps = {
       ...repo,
       issue_number: pullRequestNumber,
