@@ -41,6 +41,8 @@ async function run() {
 
     const largeFiles: string[] = [];
     const accidentallyCheckedInLsfFiles: string[] = [];
+    const consideredBinaryFiles: string[] = [];
+    const binaryPatternMatchingFiles: string[] = [];
     for (const file of prFilesWithBlobSize) {
       const {fileblobsize, filename} = file;
       if (fileblobsize !== null && fileblobsize > Number(fsl)) {
@@ -59,29 +61,32 @@ async function run() {
             accidentallyCheckedInLsfFiles.push(filename);
           }
         } else {
-          const returnedOutput = (
+          const grepOutput = (
             await execFileP('grep', ['-IL', '.', filename])
           ).stdout;
-          core.info(`Binary chek on: ${filename}`);
-          core.info(`grep -IL . output: ${returnedOutput}`);
-          if (returnedOutput.length > 0)
-            core.info(`File is considered as binary but is not LFS tracked: ${filename}`);
+          if (grepOutput.length > 0) {
+            core.info(`File is considered binary but not LFS tracked: ${filename}`);
+            consideredBinaryFiles.push(filename);
+          }
         }
       }
     }
+
+    var lsfFiles = largeFiles.concat(accidentallyCheckedInLsfFiles);
+    lsfFiles = lsfFiles.concat(consideredBinaryFiles);
 
     for (const file of prFilesMatchingBinaryPattern) {
       const {filename} = file;
       const hasLfsFlag = (
         await execFileP('git', ['check-attr', 'filter', filename])
       ).stdout.includes('filter: lfs');
-      if (!hasLfsFlag) {
-        core.info(`File matches binary extension pattern but is not LFS tracked: ${filename}`)
-        largeFiles.push(filename)
+      if (!hasLfsFlag && !lsfFiles.includes(filename)) {
+        core.info(`File matches binary extension pattern but is not LFS tracked: ${filename}`);
+        binaryPatternMatchingFiles.push(filename);
       }
     }
 
-    const lsfFiles = largeFiles.concat(accidentallyCheckedInLsfFiles);
+    lsfFiles.concat(binaryPatternMatchingFiles);
     
     const issueBaseProps = {
       ...repo,

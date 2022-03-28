@@ -10451,6 +10451,8 @@ async function run() {
         core.debug(`Files matching a binary pattern: ${JSON.stringify(prFilesMatchingBinaryPattern)}`);
         const largeFiles = [];
         const accidentallyCheckedInLsfFiles = [];
+        const consideredBinaryFiles = [];
+        const binaryPatternMatchingFiles = [];
         for (const file of prFilesWithBlobSize) {
             const { fileblobsize, filename } = file;
             if (fileblobsize !== null && fileblobsize > Number(fsl)) {
@@ -10466,23 +10468,25 @@ async function run() {
                     }
                 }
                 else {
-                    const returnedOutput = (await execFileP('grep', ['-IL', '.', filename])).stdout;
-                    core.info(`Binary chek on: ${filename}`);
-                    core.info(`grep -IL . output: ${returnedOutput}`);
-                    if (returnedOutput.length > 0)
-                        core.info(`File is considered as binary but is not LFS tracked: ${filename}`);
+                    const grepOutput = (await execFileP('grep', ['-IL', '.', filename])).stdout;
+                    if (grepOutput.length > 0) {
+                        core.info(`File is considered binary but not LFS tracked: ${filename}`);
+                        consideredBinaryFiles.push(filename);
+                    }
                 }
             }
         }
+        var lsfFiles = largeFiles.concat(accidentallyCheckedInLsfFiles);
+        lsfFiles = lsfFiles.concat(consideredBinaryFiles);
         for (const file of prFilesMatchingBinaryPattern) {
             const { filename } = file;
             const hasLfsFlag = (await execFileP('git', ['check-attr', 'filter', filename])).stdout.includes('filter: lfs');
-            if (!hasLfsFlag) {
+            if (!hasLfsFlag && !lsfFiles.includes(filename)) {
                 core.info(`File matches binary extension pattern but is not LFS tracked: ${filename}`);
-                largeFiles.push(filename);
+                binaryPatternMatchingFiles.push(filename);
             }
         }
-        const lsfFiles = largeFiles.concat(accidentallyCheckedInLsfFiles);
+        lsfFiles.concat(binaryPatternMatchingFiles);
         const issueBaseProps = {
             ...repo,
             issue_number: pullRequestNumber,

@@ -12,6 +12,9 @@ inputs:
   exclusionPatterns:
     required: false
     description: A newline delimited list of glob patterns that match checked in files to exclude form LFS Warning
+  binaryPatterns:
+    required: false
+    description: A newline delimited list of glob patterns that match potential binary files to include, even if the file size does not exceed the specified limit.
   labelName:
     required: false
     default: lfs-detected!
