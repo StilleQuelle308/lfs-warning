@@ -10465,6 +10465,9 @@ async function run() {
                         accidentallyCheckedInLsfFiles.push(filename);
                     }
                 }
+                else {
+                    const isConsideredAsBinary = (await execFileP('grep', ['-IL', '.', filename])).stdout.length > 0;
+                }
             }
         }
         for (const file of prFilesMatchingBinaryPattern) {

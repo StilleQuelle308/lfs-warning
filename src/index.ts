@@ -58,6 +58,10 @@ async function run() {
           if (!isStoredInLFS) {
             accidentallyCheckedInLsfFiles.push(filename);
           }
+        } else {
+          const isConsideredAsBinary = (
+            await execFileP('grep', ['-IL', '.', filename])
+          ).stdout.length > 0;
         }
       }
     }
