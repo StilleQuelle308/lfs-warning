@@ -10466,7 +10466,10 @@ async function run() {
                     }
                 }
                 else {
-                    const isConsideredAsBinary = (await execFileP('grep', ['-IL', '.', filename])).stdout.length > 0;
+                    const returnedOutput = (await execFileP('grep', ['-IL', '.', filename])).stdout;
+                    core.info(`grep -IL . output: ${returnedOutput}`);
+                    if (returnedOutput.length > 0)
+                        core.info(`File is considered as binary but is not LFS tracked: ${filename}`);
                 }
             }
         }

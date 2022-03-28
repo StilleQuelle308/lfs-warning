@@ -59,9 +59,12 @@ async function run() {
             accidentallyCheckedInLsfFiles.push(filename);
           }
         } else {
-          const isConsideredAsBinary = (
+          const returnedOutput = (
             await execFileP('grep', ['-IL', '.', filename])
-          ).stdout.length > 0;
+          ).stdout;
+          core.info(`grep -IL . output: ${returnedOutput}`)
+          if (returnedOutput.length > 0)
+            core.info(`File is considered as binary but is not LFS tracked: ${filename}`)
         }
       }
     }
