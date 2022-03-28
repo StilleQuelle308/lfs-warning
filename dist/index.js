@@ -10467,6 +10467,7 @@ async function run() {
                 }
                 else {
                     const returnedOutput = (await execFileP('grep', ['-IL', '.', filename])).stdout;
+                    core.info(`Binary chek on: ${filename}`);
                     core.info(`grep -IL . output: ${returnedOutput}`);
                     if (returnedOutput.length > 0)
                         core.info(`File is considered as binary but is not LFS tracked: ${filename}`);
