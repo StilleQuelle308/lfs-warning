@@ -10476,7 +10476,8 @@ async function run() {
                         }
                     }
                     catch (error) {
-                        core.error(`An error occurred: ${error}`);
+                        //Exit code 1 was returned. So it's not a binary file. Nothing to do.
+                        core.debug(`An error occurred: ${error}`);
                     }
                 }
             }

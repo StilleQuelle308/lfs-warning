@@ -44,7 +44,7 @@ async function run() {
     const consideredBinaryFiles: string[] = [];
     const binaryPatternMatchingFiles: string[] = [];
     for (const file of prFilesWithBlobSize) {
-      const {fileblobsize, filename} = file;
+      const { fileblobsize, filename } = file;
       if (fileblobsize !== null && fileblobsize > Number(fsl)) {
         largeFiles.push(filename);
       } else {
@@ -68,7 +68,8 @@ async function run() {
               consideredBinaryFiles.push(filename);
             }
           } catch (error) {
-            core.error(`An error occurred: ${error}`);
+            //Exit code 1 was returned. So it's not a binary file. Nothing to do.
+            core.debug(`An error occurred: ${error}`);
           }
         }
       }
