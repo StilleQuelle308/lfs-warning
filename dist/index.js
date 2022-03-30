@@ -10643,8 +10643,8 @@ function getCommentBody(largeFiles, accidentallyCheckedInLsfFiles, consideredBin
       `;
     const inclusionPatternMatchingFilesBody = `The following file(s) are matching an inclusion pattern and should be tracked in LFS:
 
-      ${inclusionPatternMatchingFiles.join(', ')}
-    `;
+        ${inclusionPatternMatchingFiles.join(', ')}
+      `;
     const body = `## :warning: Possible file(s) that should be tracked in LFS detected :warning:
         ${largeFiles.length > 0 ? largeFilesBody : ''}
         

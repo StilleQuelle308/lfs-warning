@@ -262,21 +262,21 @@ function getCommentBody(
 
         Consider using git-lfs to manage large files.
       `;
-
+  
   const accidentallyCheckedInLsfFilesBody = `The following file(s) are tracked in LFS and were likely accidentally checked in:
 
         ${accidentallyCheckedInLsfFiles.join(', ')}
       `;
-
+  
   const considererdBinaryFilesBody = `The following file(s) are of binary type and should be tracked in LFS:
 
         ${consideredBinaryFiles.join(', ')}
       `;
-
+  
   const inclusionPatternMatchingFilesBody = `The following file(s) are matching an inclusion pattern and should be tracked in LFS:
 
-      ${inclusionPatternMatchingFiles.join(', ')}
-    `;
+        ${inclusionPatternMatchingFiles.join(', ')}
+      `;
   const body = `## :warning: Possible file(s) that should be tracked in LFS detected :warning:
         ${largeFiles.length > 0 ? largeFilesBody : ''}
         
