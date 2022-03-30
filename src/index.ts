@@ -13,10 +13,8 @@ const event_type = context.eventName;
 async function run() {
   const fsl = getFileSizeLimitBytes();
 
-  core.info(`Default configured filesizelimit is set to ${fsl} bytes...`);
-  core.info(
-    `Name of Repository is ${repo.repo} and the owner is ${repo.owner}`
-  );
+  core.info(`Filesizelimit is set to ${fsl} bytes.`);
+  core.info(`Name of Repository is ${repo.repo} and the owner is ${repo.owner}`);
   core.info(`Triggered event is ${event_type}`);
 
   const labelName = core.getInput('labelName');
@@ -34,15 +32,15 @@ async function run() {
     core.info(`The PR number is: ${pullRequestNumber}`);
 
     const prFilesWithBlobSize = await getPrFilesWithBlobSize(pullRequestNumber);
-    const prFilesMatchingBinaryPattern = await getPrFilesMatchingBinaryPattern(pullRequestNumber);
+    const prFilesMatchingIncludePattern = await getPrFilesMatchingInclusionPattern(pullRequestNumber);
 
     core.debug(`prFilesWithBlobSize: ${JSON.stringify(prFilesWithBlobSize)}`);
-    core.debug(`Files matching a binary pattern: ${JSON.stringify(prFilesMatchingBinaryPattern)}`);
+    core.debug(`Files matching inclusion pattern: ${JSON.stringify(prFilesMatchingIncludePattern)}`);
 
     const largeFiles: string[] = [];
     const accidentallyCheckedInLsfFiles: string[] = [];
     const consideredBinaryFiles: string[] = [];
-    const binaryPatternMatchingFiles: string[] = [];
+    const inclusionPatternMatchingFiles: string[] = [];
     for (const file of prFilesWithBlobSize) {
       const { fileblobsize, filename } = file;
       if (fileblobsize !== null && fileblobsize > Number(fsl)) {
@@ -78,18 +76,18 @@ async function run() {
     var lsfFiles = largeFiles.concat(accidentallyCheckedInLsfFiles);
     lsfFiles = lsfFiles.concat(consideredBinaryFiles);
 
-    for (const file of prFilesMatchingBinaryPattern) {
+    for (const file of prFilesMatchingIncludePattern) {
       const {filename} = file;
       const hasLfsFlag = (
         await execFileP('git', ['check-attr', 'filter', filename])
       ).stdout.includes('filter: lfs');
       if (!hasLfsFlag && !lsfFiles.includes(filename)) {
-        core.info(`File matches binary extension pattern but is not LFS tracked: ${filename}`);
-        binaryPatternMatchingFiles.push(filename);
+        core.info(`File matches inclusion pattern but is not LFS tracked: ${filename}`);
+        inclusionPatternMatchingFiles.push(filename);
       }
     }
 
-    lsfFiles.concat(binaryPatternMatchingFiles);
+    lsfFiles = lsfFiles.concat(inclusionPatternMatchingFiles);
     
     const issueBaseProps = {
       ...repo,
@@ -103,6 +101,8 @@ async function run() {
       const body = getCommentBody(
         largeFiles,
         accidentallyCheckedInLsfFiles,
+        consideredBinaryFiles,
+        inclusionPatternMatchingFiles,
         fsl
       );
 
@@ -228,22 +228,21 @@ async function getPrFilesWithBlobSize(pullRequestNumber: number) {
   return prFilesWithBlobSize;
 }
 
-async function getPrFilesMatchingBinaryPattern(pullRequestNumber: number) {
+async function getPrFilesMatchingInclusionPattern(pullRequestNumber: number) {
   const {data} = await octokit.rest.pulls.listFiles({
     ...repo,
     pull_number: pullRequestNumber,
   });
 
-  const binaryPatterns = core.getMultilineInput('binaryPatterns');
-
+  const inclusionPatterns = core.getMultilineInput('inclusionPatterns');
   const files =
-    binaryPatterns.length > 0
+    inclusionPatterns.length > 0
       ? data.filter(({filename}) => {
-          const isBinary = micromatch.isMatch(filename, binaryPatterns);
-          if (isBinary) {
-            core.info(`${filename} matches a binary file extension pattern.`);
+          const isIncluded = micromatch.isMatch(filename, inclusionPatterns);
+          if (isIncluded) {
+            core.debug(`${filename} matches an inclusion pattern.`);
           }
-          return isBinary;
+          return isIncluded;
         })
       : data;
   
@@ -253,6 +252,8 @@ async function getPrFilesMatchingBinaryPattern(pullRequestNumber: number) {
 function getCommentBody(
   largeFiles: string[],
   accidentallyCheckedInLsfFiles: string[],
+  consideredBinaryFiles: string[],
+  inclusionPatternMatchingFiles: string[],
   fsl: string | number
 ) {
   const largeFilesBody = `The following file(s) exceeds the file size limit: ${fsl} bytes, as set in the .yml configuration files:
@@ -267,12 +268,22 @@ function getCommentBody(
         ${accidentallyCheckedInLsfFiles.join(', ')}
       `;
 
+  const considererdBinaryFilesBody = `The following file(s) are of binary type and should be tracked in LFS:
+
+        ${consideredBinaryFiles.join(', ')}
+      `;
+
+  const inclusionPatternMatchingFilesBody = `The following file(s) are matching an inclusion pattern and should be tracked in LFS:
+
+      ${inclusionPatternMatchingFiles.join(', ')}
+    `;
   const body = `## :warning: Possible file(s) that should be tracked in LFS detected :warning:
         ${largeFiles.length > 0 ? largeFilesBody : ''}
-        ${
-          accidentallyCheckedInLsfFiles.length > 0
-            ? accidentallyCheckedInLsfFilesBody
-            : ''
-        }`;
+        
+        ${accidentallyCheckedInLsfFiles.length > 0 ? accidentallyCheckedInLsfFilesBody : ''}
+
+        ${consideredBinaryFiles.length > 0 ? considererdBinaryFilesBody : ''}
+
+        ${inclusionPatternMatchingFiles.length > 0 ? inclusionPatternMatchingFilesBody : ''}`;
   return body;
 }
