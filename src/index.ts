@@ -32,11 +32,13 @@ async function run() {
     core.info(`The PR number is: ${pullRequestNumber}`);
 
     const prFilesWithBlobSize = await getPrFilesWithBlobSize(pullRequestNumber);
-    const prFilesMatchingIncludePattern = await getPrFilesMatchingInclusionPattern(pullRequestNumber);
+    //const prFilesMatchingIncludePattern = await getPrFilesMatchingInclusionPattern(pullRequestNumber);
 
     core.debug(`prFilesWithBlobSize: ${JSON.stringify(prFilesWithBlobSize)}`);
-    core.debug(`Files matching inclusion pattern: ${JSON.stringify(prFilesMatchingIncludePattern)}`);
+    //core.debug(`Files matching inclusion pattern: ${JSON.stringify(prFilesMatchingIncludePattern)}`);
 
+    const inclusionPatterns = core.getMultilineInput('inclusionPatterns');
+    
     const largeFiles: string[] = [];
     const accidentallyCheckedInLsfFiles: string[] = [];
     const consideredBinaryFiles: string[] = [];
@@ -65,9 +67,13 @@ async function run() {
               core.info(`File is considered binary but not LFS tracked: ${filename}`);
               consideredBinaryFiles.push(filename);
             }
-          } catch (error) {
-            //Exit code 1 was returned. So it's not a binary file. Nothing to do.
+          } catch (error) {//Exit code 1 was returned. So it's not a binary file.
             core.debug(`An error occurred: ${error}`);
+            if (inclusionPatterns.length > 0) {// Checking inclusion pattern
+              if (micromatch.isMatch(filename, inclusionPatterns)) {
+                inclusionPatternMatchingFiles.push(filename)
+              }
+            }
           }
         }
       }
@@ -76,7 +82,7 @@ async function run() {
     var lsfFiles = largeFiles.concat(accidentallyCheckedInLsfFiles);
     lsfFiles = lsfFiles.concat(consideredBinaryFiles);
 
-    for (const file of prFilesMatchingIncludePattern) {
+    /*for (const file of prFilesMatchingIncludePattern) {
       const {filename} = file;
       const hasLfsFlag = (
         await execFileP('git', ['check-attr', 'filter', filename])
@@ -85,7 +91,7 @@ async function run() {
         core.info(`File matches inclusion pattern but is not LFS tracked: ${filename}`);
         inclusionPatternMatchingFiles.push(filename);
       }
-    }
+    }*/
 
     lsfFiles = lsfFiles.concat(inclusionPatternMatchingFiles);
     
