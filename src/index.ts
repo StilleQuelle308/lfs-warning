@@ -32,10 +32,8 @@ async function run() {
     core.info(`The PR number is: ${pullRequestNumber}`);
 
     const prFilesWithBlobSize = await getPrFilesWithBlobSize(pullRequestNumber);
-    //const prFilesMatchingIncludePattern = await getPrFilesMatchingInclusionPattern(pullRequestNumber);
 
     core.debug(`prFilesWithBlobSize: ${JSON.stringify(prFilesWithBlobSize)}`);
-    //core.debug(`Files matching inclusion pattern: ${JSON.stringify(prFilesMatchingIncludePattern)}`);
 
     const inclusionPatterns = core.getMultilineInput('inclusionPatterns');
     
@@ -81,17 +79,6 @@ async function run() {
 
     var lsfFiles = largeFiles.concat(accidentallyCheckedInLsfFiles);
     lsfFiles = lsfFiles.concat(consideredBinaryFiles);
-
-    /*for (const file of prFilesMatchingIncludePattern) {
-      const {filename} = file;
-      const hasLfsFlag = (
-        await execFileP('git', ['check-attr', 'filter', filename])
-      ).stdout.includes('filter: lfs');
-      if (!hasLfsFlag && !lsfFiles.includes(filename)) {
-        core.info(`File matches inclusion pattern but is not LFS tracked: ${filename}`);
-        inclusionPatternMatchingFiles.push(filename);
-      }
-    }*/
 
     lsfFiles = lsfFiles.concat(inclusionPatternMatchingFiles);
     
@@ -232,27 +219,6 @@ async function getPrFilesWithBlobSize(pullRequestNumber: number) {
     })
   );
   return prFilesWithBlobSize;
-}
-
-async function getPrFilesMatchingInclusionPattern(pullRequestNumber: number) {
-  const {data} = await octokit.rest.pulls.listFiles({
-    ...repo,
-    pull_number: pullRequestNumber,
-  });
-
-  const inclusionPatterns = core.getMultilineInput('inclusionPatterns');
-  const files =
-    inclusionPatterns.length > 0
-      ? data.filter(({filename}) => {
-          const isIncluded = micromatch.isMatch(filename, inclusionPatterns);
-          if (isIncluded) {
-            core.debug(`${filename} matches an inclusion pattern.`);
-          }
-          return isIncluded;
-        })
-      : data;
-  
-  return files;
 }
 
 function getCommentBody(
