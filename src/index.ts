@@ -10,11 +10,37 @@ const context = github.context;
 const {repo} = context;
 const event_type = context.eventName;
 
+async function doGrepBasedBinaryCheck(
+  filename: string,
+  consideredBinaryFiles: string[],
+  inclusionPatterns: string[],
+  inclusionPatternMatchingFiles: string[]
+) {
+  try {
+    const grepOutput = await execFileP('grep', ['-IL', '.', filename]);
+    if (grepOutput.stdout && grepOutput.stdout.length > 0) {
+      core.info(`File is considered binary but not LFS tracked: ${filename}`);
+      consideredBinaryFiles.push(filename);
+    }
+  } catch (error) {
+    //Exit code 1 was returned. So it's not a binary file.
+    core.debug(`An error occurred: ${error}`);
+    if (inclusionPatterns.length > 0) {
+      // Checking inclusion pattern
+      if (micromatch.isMatch(filename, inclusionPatterns)) {
+        inclusionPatternMatchingFiles.push(filename);
+      }
+    }
+  }
+}
+
 async function run() {
   const fsl = getFileSizeLimitBytes();
 
   core.info(`Filesizelimit is set to ${fsl} bytes.`);
-  core.info(`Name of Repository is ${repo.repo} and the owner is ${repo.owner}`);
+  core.info(
+    `Name of Repository is ${repo.repo} and the owner is ${repo.owner}`
+  );
   core.info(`Triggered event is ${event_type}`);
 
   const labelName = core.getInput('labelName');
@@ -32,20 +58,18 @@ async function run() {
     core.info(`The PR number is: ${pullRequestNumber}`);
 
     const prFilesWithBlobSize = await getPrFilesWithBlobSize(pullRequestNumber);
-    //const prFilesMatchingIncludePattern = await getPrFilesMatchingInclusionPattern(pullRequestNumber);
 
     core.debug(`prFilesWithBlobSize: ${JSON.stringify(prFilesWithBlobSize)}`);
-    //core.debug(`Files matching inclusion pattern: ${JSON.stringify(prFilesMatchingIncludePattern)}`);
 
     const inclusionPatterns = core.getMultilineInput('inclusionPatterns');
-    
+
     const largeFiles: string[] = [];
     const accidentallyCheckedInLsfFiles: string[] = [];
     const consideredBinaryFiles: string[] = [];
     const inclusionPatternMatchingFiles: string[] = [];
     for (const file of prFilesWithBlobSize) {
-      const { fileblobsize, filename } = file;
-      if (fileblobsize !== null && fileblobsize > Number(fsl)) {
+      const {fileBlobSize: fileBlobSize, filename} = file;
+      if (fileBlobSize !== null && fileBlobSize > Number(fsl)) {
         largeFiles.push(filename);
       } else {
         // look for files below threshold that should be stored in LFS but are not
@@ -61,40 +85,20 @@ async function run() {
             accidentallyCheckedInLsfFiles.push(filename);
           }
         } else {
-          try {
-            const grepOutput = (await execFileP('grep', ['-IL', '.', filename]));
-            if (grepOutput.stdout && grepOutput.stdout.length > 0) {
-              core.info(`File is considered binary but not LFS tracked: ${filename}`);
-              consideredBinaryFiles.push(filename);
-            }
-          } catch (error) {//Exit code 1 was returned. So it's not a binary file.
-            core.debug(`An error occurred: ${error}`);
-            if (inclusionPatterns.length > 0) {// Checking inclusion pattern
-              if (micromatch.isMatch(filename, inclusionPatterns)) {
-                inclusionPatternMatchingFiles.push(filename)
-              }
-            }
-          }
+          await doGrepBasedBinaryCheck(
+            filename,
+            consideredBinaryFiles,
+            inclusionPatterns,
+            inclusionPatternMatchingFiles
+          );
         }
       }
     }
 
-    var lsfFiles = largeFiles.concat(accidentallyCheckedInLsfFiles);
+    let lsfFiles = largeFiles.concat(accidentallyCheckedInLsfFiles);
     lsfFiles = lsfFiles.concat(consideredBinaryFiles);
-
-    /*for (const file of prFilesMatchingIncludePattern) {
-      const {filename} = file;
-      const hasLfsFlag = (
-        await execFileP('git', ['check-attr', 'filter', filename])
-      ).stdout.includes('filter: lfs');
-      if (!hasLfsFlag && !lsfFiles.includes(filename)) {
-        core.info(`File matches inclusion pattern but is not LFS tracked: ${filename}`);
-        inclusionPatternMatchingFiles.push(filename);
-      }
-    }*/
-
     lsfFiles = lsfFiles.concat(inclusionPatternMatchingFiles);
-    
+
     const issueBaseProps = {
       ...repo,
       issue_number: pullRequestNumber,
@@ -225,34 +229,13 @@ async function getPrFilesWithBlobSize(pullRequestNumber: number) {
 
       return {
         filename,
-        filesha: sha,
-        fileblobsize: blob.size,
+        fileSha: sha,
+        fileBlobSize: blob.size,
         patch,
       };
     })
   );
   return prFilesWithBlobSize;
-}
-
-async function getPrFilesMatchingInclusionPattern(pullRequestNumber: number) {
-  const {data} = await octokit.rest.pulls.listFiles({
-    ...repo,
-    pull_number: pullRequestNumber,
-  });
-
-  const inclusionPatterns = core.getMultilineInput('inclusionPatterns');
-  const files =
-    inclusionPatterns.length > 0
-      ? data.filter(({filename}) => {
-          const isIncluded = micromatch.isMatch(filename, inclusionPatterns);
-          if (isIncluded) {
-            core.debug(`${filename} matches an inclusion pattern.`);
-          }
-          return isIncluded;
-        })
-      : data;
-  
-  return files;
 }
 
 function getCommentBody(
@@ -268,17 +251,17 @@ function getCommentBody(
 
         Consider using git-lfs to manage large files.
       `;
-  
+
   const accidentallyCheckedInLsfFilesBody = `The following file(s) are tracked in LFS and were likely accidentally checked in:
 
         ${accidentallyCheckedInLsfFiles.join(', ')}
       `;
-  
+
   const considererdBinaryFilesBody = `The following file(s) are of binary type and should be tracked in LFS:
 
         ${consideredBinaryFiles.join(', ')}
       `;
-  
+
   const inclusionPatternMatchingFilesBody = `The following file(s) are matching an inclusion pattern and should be tracked in LFS:
 
         ${inclusionPatternMatchingFiles.join(', ')}
@@ -286,10 +269,18 @@ function getCommentBody(
   const body = `## :warning: Possible file(s) that should be tracked in LFS detected :warning:
         ${largeFiles.length > 0 ? largeFilesBody : ''}
         
-        ${accidentallyCheckedInLsfFiles.length > 0 ? accidentallyCheckedInLsfFilesBody : ''}
+        ${
+          accidentallyCheckedInLsfFiles.length > 0
+            ? accidentallyCheckedInLsfFilesBody
+            : ''
+        }
 
         ${consideredBinaryFiles.length > 0 ? considererdBinaryFilesBody : ''}
 
-        ${inclusionPatternMatchingFiles.length > 0 ? inclusionPatternMatchingFilesBody : ''}`;
+        ${
+          inclusionPatternMatchingFiles.length > 0
+            ? inclusionPatternMatchingFilesBody
+            : ''
+        }`;
   return body;
 }

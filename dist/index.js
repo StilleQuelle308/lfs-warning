@@ -10430,6 +10430,25 @@ const octokit = github.getOctokit(core.getInput('token'));
 const context = github.context;
 const { repo } = context;
 const event_type = context.eventName;
+async function doGrepBasedBinaryCheck(filename, consideredBinaryFiles, inclusionPatterns, inclusionPatternMatchingFiles) {
+    try {
+        const grepOutput = await execFileP('grep', ['-IL', '.', filename]);
+        if (grepOutput.stdout && grepOutput.stdout.length > 0) {
+            core.info(`File is considered binary but not LFS tracked: ${filename}`);
+            consideredBinaryFiles.push(filename);
+        }
+    }
+    catch (error) {
+        //Exit code 1 was returned. So it's not a binary file.
+        core.debug(`An error occurred: ${error}`);
+        if (inclusionPatterns.length > 0) {
+            // Checking inclusion pattern
+            if (micromatch.isMatch(filename, inclusionPatterns)) {
+                inclusionPatternMatchingFiles.push(filename);
+            }
+        }
+    }
+}
 async function run() {
     var _a, _b;
     const fsl = getFileSizeLimitBytes();
@@ -10446,17 +10465,15 @@ async function run() {
         }
         core.info(`The PR number is: ${pullRequestNumber}`);
         const prFilesWithBlobSize = await getPrFilesWithBlobSize(pullRequestNumber);
-        //const prFilesMatchingIncludePattern = await getPrFilesMatchingInclusionPattern(pullRequestNumber);
         core.debug(`prFilesWithBlobSize: ${JSON.stringify(prFilesWithBlobSize)}`);
-        //core.debug(`Files matching inclusion pattern: ${JSON.stringify(prFilesMatchingIncludePattern)}`);
         const inclusionPatterns = core.getMultilineInput('inclusionPatterns');
         const largeFiles = [];
         const accidentallyCheckedInLsfFiles = [];
         const consideredBinaryFiles = [];
         const inclusionPatternMatchingFiles = [];
         for (const file of prFilesWithBlobSize) {
-            const { fileblobsize, filename } = file;
-            if (fileblobsize !== null && fileblobsize > Number(fsl)) {
+            const { fileBlobSize: fileBlobSize, filename } = file;
+            if (fileBlobSize !== null && fileBlobSize > Number(fsl)) {
                 largeFiles.push(filename);
             }
             else {
@@ -10469,36 +10486,12 @@ async function run() {
                     }
                 }
                 else {
-                    try {
-                        const grepOutput = (await execFileP('grep', ['-IL', '.', filename]));
-                        if (grepOutput.stdout && grepOutput.stdout.length > 0) {
-                            core.info(`File is considered binary but not LFS tracked: ${filename}`);
-                            consideredBinaryFiles.push(filename);
-                        }
-                    }
-                    catch (error) { //Exit code 1 was returned. So it's not a binary file.
-                        core.debug(`An error occurred: ${error}`);
-                        if (inclusionPatterns.length > 0) { // Checking inclusion pattern
-                            if (micromatch.isMatch(filename, inclusionPatterns)) {
-                                inclusionPatternMatchingFiles.push(filename);
-                            }
-                        }
-                    }
+                    await doGrepBasedBinaryCheck(filename, consideredBinaryFiles, inclusionPatterns, inclusionPatternMatchingFiles);
                 }
             }
         }
-        var lsfFiles = largeFiles.concat(accidentallyCheckedInLsfFiles);
+        let lsfFiles = largeFiles.concat(accidentallyCheckedInLsfFiles);
         lsfFiles = lsfFiles.concat(consideredBinaryFiles);
-        /*for (const file of prFilesMatchingIncludePattern) {
-          const {filename} = file;
-          const hasLfsFlag = (
-            await execFileP('git', ['check-attr', 'filter', filename])
-          ).stdout.includes('filter: lfs');
-          if (!hasLfsFlag && !lsfFiles.includes(filename)) {
-            core.info(`File matches inclusion pattern but is not LFS tracked: ${filename}`);
-            inclusionPatternMatchingFiles.push(filename);
-          }
-        }*/
         lsfFiles = lsfFiles.concat(inclusionPatternMatchingFiles);
         const issueBaseProps = {
             ...repo,
@@ -10609,29 +10602,12 @@ async function getPrFilesWithBlobSize(pullRequestNumber) {
         });
         return {
             filename,
-            filesha: sha,
-            fileblobsize: blob.size,
+            fileSha: sha,
+            fileBlobSize: blob.size,
             patch,
         };
     }));
     return prFilesWithBlobSize;
-}
-async function getPrFilesMatchingInclusionPattern(pullRequestNumber) {
-    const { data } = await octokit.rest.pulls.listFiles({
-        ...repo,
-        pull_number: pullRequestNumber,
-    });
-    const inclusionPatterns = core.getMultilineInput('inclusionPatterns');
-    const files = inclusionPatterns.length > 0
-        ? data.filter(({ filename }) => {
-            const isIncluded = micromatch.isMatch(filename, inclusionPatterns);
-            if (isIncluded) {
-                core.debug(`${filename} matches an inclusion pattern.`);
-            }
-            return isIncluded;
-        })
-        : data;
-    return files;
 }
 function getCommentBody(largeFiles, accidentallyCheckedInLsfFiles, consideredBinaryFiles, inclusionPatternMatchingFiles, fsl) {
     const largeFilesBody = `The following file(s) exceeds the file size limit: ${fsl} bytes, as set in the .yml configuration files:
@@ -10655,11 +10631,15 @@ function getCommentBody(largeFiles, accidentallyCheckedInLsfFiles, consideredBin
     const body = `## :warning: Possible file(s) that should be tracked in LFS detected :warning:
         ${largeFiles.length > 0 ? largeFilesBody : ''}
         
-        ${accidentallyCheckedInLsfFiles.length > 0 ? accidentallyCheckedInLsfFilesBody : ''}
+        ${accidentallyCheckedInLsfFiles.length > 0
+        ? accidentallyCheckedInLsfFilesBody
+        : ''}
 
         ${consideredBinaryFiles.length > 0 ? considererdBinaryFilesBody : ''}
 
-        ${inclusionPatternMatchingFiles.length > 0 ? inclusionPatternMatchingFilesBody : ''}`;
+        ${inclusionPatternMatchingFiles.length > 0
+        ? inclusionPatternMatchingFilesBody
+        : ''}`;
     return body;
 }
 
